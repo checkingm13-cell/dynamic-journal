@@ -1738,7 +1738,7 @@ document.addEventListener('DOMContentLoaded', function() {
         alertBox.style.backgroundColor = '#e8f4fd';
         alertBox.style.color = '#0c5460';
         alertBox.style.border = '1px solid #bee5eb';
-        alertBox.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Submitting manuscript securely to Supabase... Please wait.';
+        alertBox.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Submitting manuscript... Redirecting to confirmation page.';
 
         if (submitBtn) {
             submitBtn.disabled = true;
@@ -1749,19 +1749,15 @@ document.addEventListener('DOMContentLoaded', function() {
             var formData = new FormData(form);
             var response = await fetch(form.getAttribute('action') || '/action/actionadd.php', {
                 method: 'POST',
+                headers: { 'Accept': 'application/json' },
                 body: formData
             });
 
             var resData = await response.json();
 
             if (response.ok && resData.status === 'success') {
-                alertBox.style.backgroundColor = '#d4edda';
-                alertBox.style.color = '#155724';
-                alertBox.style.border = '1px solid #c3e6cb';
-                alertBox.innerHTML = '<i class="fa fa-check-circle"></i> ' + resData.message + 
-                    '<br><strong>Tracking Manuscript ID:</strong> ' + (resData.manuscript_id || 'N/A') +
-                    '<br><small>A confirmation record has been stored in Supabase cloud database.</small>';
-                form.reset();
+                var redirectUrl = resData.redirect || ('/view.php?p=success&ref=' + (resData.manuscript_id || ''));
+                window.location.href = redirectUrl;
             } else {
                 throw new Error(resData.message || 'Submission failed. Please check your fields.');
             }
@@ -1770,7 +1766,6 @@ document.addEventListener('DOMContentLoaded', function() {
             alertBox.style.color = '#721c24';
             alertBox.style.border = '1px solid #f5c6cb';
             alertBox.innerHTML = '<i class="fa fa-exclamation-triangle"></i> Error: ' + err.message;
-        } finally {
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.value = 'Submit';

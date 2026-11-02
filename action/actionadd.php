@@ -208,16 +208,29 @@ try {
         }
     }
 
-    echo json_encode([
-        'validated'     => true,
-        'status'        => 'success',
-        'message'       => 'Manuscript successfully submitted and logged into cloud database.',
-        'manuscript_id' => $refAid,
-        'journal'       => $current_journal['title'],
-        'fieldValues'   => [
-            'manuscript_id' => $refAid
-        ]
-    ]);
+    // Check if client expects JSON or standard form redirection
+    $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+              || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
+
+    if ($isAjax) {
+        echo json_encode([
+            'validated'     => true,
+            'status'        => 'success',
+            'message'       => 'Manuscript successfully submitted and logged into cloud database.',
+            'manuscript_id' => $refAid,
+            'journal'       => $current_journal['title'],
+            'redirect'      => "/view.php?p=success&ref={$refAid}",
+            'fieldValues'   => [
+                'manuscript_id' => $refAid,
+                'serverRedirect' => "/view.php?p=success&ref={$refAid}"
+            ]
+        ]);
+        exit;
+    }
+
+    // Standard Browser Form Redirect (matching live GJRA / WWJ architecture)
+    header("Location: /view.php?p=success&ref={$refAid}");
+    echo "<script>window.location.href = '/view.php?p=success&ref={$refAid}';</script>";
     exit;
 
 } catch (Throwable $e) {

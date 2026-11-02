@@ -40,6 +40,10 @@ switch (true) {
         }
         break;
 
+    case (strpos($uri, 'success') !== false || (isset($_GET['p']) && $_GET['p'] === 'success')):
+        require __DIR__ . '/views/success.php';
+        break;
+
     case (strpos($uri, 'downloads') !== false):
         $file = "{$template_base}/downloads.php";
         if (file_exists($file)) {
