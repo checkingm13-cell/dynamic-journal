@@ -22,6 +22,12 @@ if (!$current_journal) {
     exit;
 }
 
+// Handle method=csrfToken probe from legacy forms cleanly
+if (isset($_GET['method']) && $_GET['method'] === 'csrfToken') {
+    echo json_encode(['status' => 'success', 'token' => bin2hex(random_bytes(16))]);
+    exit;
+}
+
 // Only accept POST requests
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
