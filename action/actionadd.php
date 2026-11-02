@@ -196,10 +196,12 @@ try {
     $insertedArticleId = $insertRes['data'][0]['id'];
 
     // Process Co-Authors if provided into 'co_authors' Table
+    $coAuthorsList = [];
     if (!empty($_POST['co_author']) && is_array($_POST['co_author'])) {
         foreach ($_POST['co_author'] as $coName) {
             $cleanedCoName = trim((string)$coName);
             if ($cleanedCoName !== '') {
+                $coAuthorsList[] = $cleanedCoName;
                 supabase_request('co_authors', 'POST', [
                     'article_id'     => $insertedArticleId,
                     'co_author_name' => $cleanedCoName
@@ -207,6 +209,17 @@ try {
             }
         }
     }
+
+    // 4. TRIGGER EMAIL DISPATCH (EDITOR & AUTHOR NOTIFICATION)
+    require_once __DIR__ . '/../includes/WWJMailer.php';
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+    $host = $_SERVER['HTTP_HOST'] ?? '127.0.0.1:8080';
+    $downloadUrl = "{$protocol}{$host}/storage/uploads/{$current_journal['key']}/{$yearMonth}/{$safeStoredName}";
+
+    $mailPayload = $articlePayload;
+    $mailPayload['co_authors'] = $coAuthorsList;
+
+    WWJMailer::dispatchSubmissionEmails($current_journal, $mailPayload, $downloadUrl);
 
     // Check if client expects JSON or standard form redirection
     $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
