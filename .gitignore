@@ -1,0 +1,25 @@
+# Sensitive Environment Secrets (NEVER COMMIT TO PUBLIC REPO)
+env.txt
+.env
+.env.*
+
+# Uploaded User Manuscripts & Storage Files
+storage/uploads/*/*
+!storage/uploads/.htaccess
+!storage/uploads/*/.gitkeep
+
+# Active Domain Lock State
+.journal_lock
+
+# Logs & Temporary Files
+*.log
+error_log
+storage/*.log
+
+# Operating System & Editor Metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace

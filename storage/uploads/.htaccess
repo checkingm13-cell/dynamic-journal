@@ -1,0 +1,15 @@
+# OWASP ASVS Rule: Disable Script Execution in Upload Storage
+# Prevents PHP2Shell / Remote Code Execution attacks completely
+php_flag engine off
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .phar .shtml .cgi .pl .py .jsp .asp .sh
+Options -Indexes -ExecCGI
+
+<FilesMatch "\.(?i:php|phtml|phar|pl|py|jsp|asp|sh|cgi|exe|cmd|bat)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Only serve documents as binary attachments, prevent MIME execution sniffing
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>

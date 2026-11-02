@@ -1,0 +1,15 @@
+Options -Indexes +FollowSymlinks
+RewriteEngine On
+RewriteBase /
+
+# Route all incoming requests to index.php front controller
+# Preserve static assets and existing physical files
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Prevent direct access to sensitive configuration and lock files
+<FilesMatch "^\.(journal_lock|htaccess|env)|(config\.php)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>

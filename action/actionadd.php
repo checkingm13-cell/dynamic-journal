@@ -1,0 +1,219 @@
+<?php
+/**
+ * Hardened OWASP ASVS Manuscript Ingestion Handler
+ * Integrates directly with Supabase Cloud Database (userarticle & co_authors tables)
+ * Strict Defense Against:
+ * - Arbitrary File Upload (V12)
+ * - Input Injection & MIME Tampering (V5)
+ * - Distributed Shared Hosting & Multi-Domain Ingestion
+ */
+
+declare(strict_types=1);
+define('WWJ_EXEC', true);
+
+require_once __DIR__ . '/../config.php';
+
+header('Content-Type: application/json; charset=utf-8');
+
+// Ensure system is locked to an active journal
+if (!$current_journal) {
+    http_response_code(403);
+    echo json_encode(['status' => 'error', 'message' => 'System unconfigured. Run admin setup first.']);
+    exit;
+}
+
+// Only accept POST requests
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['status' => 'error', 'message' => 'Method Not Allowed']);
+    exit;
+}
+
+// 1. CAPTCHA & INPUT SANITIZATION
+$ran      = trim($_POST['ran'] ?? '');
+$scaptcha = trim($_POST['scaptcha'] ?? '');
+
+if ($ran === '' || $scaptcha === '' || $ran !== $scaptcha) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'Security verification code is incorrect.']);
+    exit;
+}
+
+$name     = trim($_POST['name'] ?? '');
+$phone    = preg_replace('/[^0-9+]/', '', trim($_POST['phone'] ?? ''));
+$article  = trim($_POST['article'] ?? '');
+$subject  = trim($_POST['subjetlist'] ?? '');
+$address  = trim($_POST['rafhc'] ?? '');
+$email    = filter_var(trim($_POST['email'] ?? ''), FILTER_VALIDATE_EMAIL);
+$aemail   = filter_var(trim($_POST['aemailid'] ?? ''), FILTER_VALIDATE_EMAIL) ?: null;
+
+if (!$name || !$phone || !$article || !$subject || !$address || !$email) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'All mandatory fields marked with * must be filled.']);
+    exit;
+}
+
+// 2. OWASP ASVS V12: HARDENED FILE UPLOAD PIPELINE
+if (!isset($_FILES['userfile']) || $_FILES['userfile']['error'] !== UPLOAD_ERR_OK) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'Please attach a valid manuscript file.']);
+    exit;
+}
+
+$fileTmp  = $_FILES['userfile']['tmp_name'];
+$fileSize = $_FILES['userfile']['size'];
+$origName = $_FILES['userfile']['name'];
+
+// Rule 1: Strict File Size Limit (Max 25 MB)
+if ($fileSize > 25 * 1024 * 1024) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'Manuscript file exceeds maximum allowed limit (25MB).']);
+    exit;
+}
+
+// Rule 2: Strict Extension Whitelist
+$ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+if (!in_array($ext, ['doc', 'docx'], true)) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'ASVS Violation: Only Microsoft Word (.doc, .docx) files are accepted.']);
+    exit;
+}
+
+// Rule 3: MIME Type Introspection
+$finfo = new finfo(FILEINFO_MIME_TYPE);
+$mime = $finfo->file($fileTmp);
+$allowed_mimes = [
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/zip',
+    'application/octet-stream'
+];
+if (!in_array($mime, $allowed_mimes, true)) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'MIME validation failed. File is not a valid Word document.']);
+    exit;
+}
+
+// Rule 4: Deep Byte-Level Magic Header Inspection
+$handle = fopen($fileTmp, 'rb');
+$magicHeader = fread($handle, 8);
+fclose($handle);
+
+$isDocx = (substr($magicHeader, 0, 4) === "PK\x03\x04");
+$isDoc  = (substr($magicHeader, 0, 8) === "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1");
+
+if ($ext === 'docx' && !$isDocx) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'Security Alert: Corrupted or forged .docx file detected.']);
+    exit;
+}
+if ($ext === 'doc' && !$isDoc) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'Security Alert: Corrupted or forged .doc file detected.']);
+    exit;
+}
+
+// Rule 5: Secure Partitioning by Journal & Date
+$yearMonth = date('Y/F');
+$targetDir = $current_journal['upload_dir'] . $yearMonth . '/';
+
+if (!is_dir($targetDir)) {
+    if (!mkdir($targetDir, 0755, true) && !is_dir($targetDir)) {
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Storage initialization failed.']);
+        exit;
+    }
+}
+
+// Rule 6: Cryptographically Secure Obfuscated Storage Name
+$safeStoredName = time() . '_' . bin2hex(random_bytes(8)) . '.' . ($isDocx ? 'docx' : 'doc');
+$targetPath = $targetDir . $safeStoredName;
+
+if (!move_uploaded_file($fileTmp, $targetPath)) {
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => 'Internal storage failure saving manuscript.']);
+    exit;
+}
+
+// 3. SUPABASE CLOUD INSERTION VIA REST API
+try {
+    // Generate Unique Tracking ID
+    $journalCode = $current_journal['code'];
+    $journalPrefix = $current_journal['prefix'];
+    $currentDomain = $_SERVER['HTTP_HOST'] ?? 'unknown_domain';
+
+    // Query highest id for this journal to calculate next sequential ID
+    $checkRes = supabase_request("userarticle?select=id&journal_code=eq.{$journalCode}&order=id.desc&limit=1");
+    $nextNum = 1001;
+    if ($checkRes['status'] === 'success' && !empty($checkRes['data'])) {
+        $nextNum = ((int)$checkRes['data'][0]['id']) + 1001;
+    } else {
+        $nextNum = rand(1001, 1999);
+    }
+    $refAid = $journalPrefix . $nextNum;
+
+    // Prepare Payload for 'userarticle' Table
+    $articlePayload = [
+        'ref_aid'      => $refAid,
+        'journal_code' => $journalCode,
+        'domain'       => $currentDomain,
+        'name'         => $name,
+        'contact'      => $phone,
+        'title'        => $article,
+        'subject'      => $subject,
+        'res_add'      => $address,
+        'email'        => $email,
+        'aemail'       => $aemail,
+        'file'         => $safeStoredName,
+        'code'         => '1',
+        'user_ip'      => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1',
+        'status'       => 'submitted',
+        'date'         => date('F j, Y'),
+        'time'         => date('Y-m-d H:i:s')
+    ];
+
+    $insertRes = supabase_request('userarticle', 'POST', $articlePayload);
+
+    if ($insertRes['status'] !== 'success' || empty($insertRes['data'])) {
+        // Rollback local uploaded file on failure
+        if (file_exists($targetPath)) {
+            @unlink($targetPath);
+        }
+        error_log("Supabase Article Insert Failed: " . json_encode($insertRes));
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Cloud database insertion failed. Please try again.']);
+        exit;
+    }
+
+    $insertedArticleId = $insertRes['data'][0]['id'];
+
+    // Process Co-Authors if provided into 'co_authors' Table
+    if (!empty($_POST['co_author']) && is_array($_POST['co_author'])) {
+        foreach ($_POST['co_author'] as $coName) {
+            $cleanedCoName = trim((string)$coName);
+            if ($cleanedCoName !== '') {
+                supabase_request('co_authors', 'POST', [
+                    'article_id'     => $insertedArticleId,
+                    'co_author_name' => $cleanedCoName
+                ]);
+            }
+        }
+    }
+
+    echo json_encode([
+        'status'        => 'success',
+        'message'       => 'Manuscript successfully submitted and logged into cloud database.',
+        'manuscript_id' => $refAid,
+        'journal'       => $current_journal['title']
+    ]);
+    exit;
+
+} catch (Throwable $e) {
+    if (file_exists($targetPath)) {
+        @unlink($targetPath);
+    }
+    error_log("WWJ Supabase Ingestion Error: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => 'Unexpected error while registering manuscript.']);
+    exit;
+}
