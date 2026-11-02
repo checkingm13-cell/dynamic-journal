@@ -11,8 +11,44 @@ if (!defined('WWJ_EXEC')) {
 }
 
 // -----------------------------------------------------------------------------
-// Supabase Cloud Configuration
+// Database Connection Configuration (cPanel MySQL & Supabase Cloud Fallback)
 // -----------------------------------------------------------------------------
+define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
+define('DB_PORT', (int)(getenv('DB_PORT') ?: 3306));
+
+// Journal-Specific Database Credentials (Synchronized with live cPanel servers)
+$DB_CONFIGS = [
+    'gjra' => [
+        'host' => DB_HOST,
+        'user' => 'fulltext_wwjgjra',
+        'pass' => 'i[baeFV5g%7nt',
+        'name' => 'fulltext_wwjgjra',
+        'port' => DB_PORT
+    ],
+    'paripex' => [
+        'host' => DB_HOST,
+        'user' => 'fulltext_wwjpijr',
+        'pass' => 'i[baeFV5g%7nt',
+        'name' => 'fulltext_wwjpijr',
+        'port' => DB_PORT
+    ],
+    'ijsr' => [
+        'host' => DB_HOST,
+        'user' => 'fulltext_wwjijsr',
+        'pass' => 'i[baeFV5g%7nt',
+        'name' => 'fulltext_wwjijsr',
+        'port' => DB_PORT
+    ],
+    'ijar' => [
+        'host' => DB_HOST,
+        'user' => 'fulltext_wwjijar',
+        'pass' => 'ODJ4-[3ETO=e',
+        'name' => 'fulltext_wwjijar',
+        'port' => DB_PORT
+    ]
+];
+
+// Supabase Cloud Configuration (Active for cloud/local API fallback)
 define('SUPABASE_URL', 'https://wzgzgqtegiqwagxvhxku.supabase.co');
 define('SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6Z3pncXRlZ2lxd2FneHZoeGt1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM2MDgzMDYsImV4cCI6MjEwOTE4NDMwNn0.rK9Cz1-_biOM5p4gjqs0fY-0pWQs3_8RRyuf017KUPU');
 
@@ -122,6 +158,31 @@ if (!$active_key || !isset($JOURNALS[$active_key])) {
 
 $current_journal = $JOURNALS[$active_key];
 $current_journal['key'] = $active_key;
+$current_journal['db'] = $DB_CONFIGS[$active_key] ?? null;
+
+/**
+ * Universal Database Connection Helper
+ * Connects to cPanel MySQL database via PDO if available, else returns null
+ */
+function get_db_connection(?string $journal_key = null): ?PDO {
+    global $current_journal, $DB_CONFIGS;
+    $key = $journal_key ?? ($current_journal['key'] ?? 'gjra');
+    $cfg = $DB_CONFIGS[$key] ?? null;
+    if (!$cfg) return null;
+
+    try {
+        $dsn = "mysql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['name']};charset=utf8mb4";
+        $pdo = new PDO($dsn, $cfg['user'], $cfg['pass'], [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_TIMEOUT            => 3
+        ]);
+        return $pdo;
+    } catch (Throwable $e) {
+        error_log("MySQL Connection Notice for {$key}: " . $e->getMessage());
+        return null;
+    }
+}
 
 /**
  * Universal Supabase Client via cURL & Pure PHP Stream Fallback
