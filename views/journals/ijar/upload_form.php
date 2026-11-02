@@ -2135,7 +2135,80 @@ $(function() {
 <script type="text/javascript">
 	// start jqueryform initialization
 	// --------------------------------
-	JF.init( '#' + $('.jf-form > form:first-child').attr('id') );
+	// Obsolete JF.init neutralized
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var form = document.getElementById('jqueryform-00c660');
+    if (!form) return;
+
+    var submitBtn = document.getElementById('Submit');
+    if (submitBtn) {
+        submitBtn.removeAttribute('disabled');
+        submitBtn.onclick = null;
+    }
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        var alertBox = document.getElementById('submitStatusAlert');
+        if (!alertBox) {
+            alertBox = document.createElement('div');
+            alertBox.id = 'submitStatusAlert';
+            alertBox.style.padding = '14px 18px';
+            alertBox.style.margin = '15px 0';
+            alertBox.style.borderRadius = '4px';
+            alertBox.style.fontWeight = 'bold';
+            alertBox.style.fontSize = '15px';
+            form.appendChild(alertBox);
+        }
+        
+        alertBox.style.display = 'block';
+        alertBox.style.backgroundColor = '#e8f4fd';
+        alertBox.style.color = '#0c5460';
+        alertBox.style.border = '1px solid #bee5eb';
+        alertBox.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Submitting manuscript securely to Supabase... Please wait.';
+
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.value = 'Submitting...';
+        }
+
+        try {
+            var formData = new FormData(form);
+            var response = await fetch(form.getAttribute('action') || '/action/actionadd.php', {
+                method: 'POST',
+                body: formData
+            });
+
+            var resData = await response.json();
+
+            if (response.ok && resData.status === 'success') {
+                alertBox.style.backgroundColor = '#d4edda';
+                alertBox.style.color = '#155724';
+                alertBox.style.border = '1px solid #c3e6cb';
+                alertBox.innerHTML = '<i class="fa fa-check-circle"></i> ' + resData.message + 
+                    '<br><strong>Tracking Manuscript ID:</strong> ' + (resData.manuscript_id || 'N/A') +
+                    '<br><small>A confirmation record has been stored in Supabase cloud database.</small>';
+                form.reset();
+            } else {
+                throw new Error(resData.message || 'Submission failed. Please check your fields.');
+            }
+        } catch (err) {
+            alertBox.style.backgroundColor = '#f8d7da';
+            alertBox.style.color = '#721c24';
+            alertBox.style.border = '1px solid #f5c6cb';
+            alertBox.innerHTML = '<i class="fa fa-exclamation-triangle"></i> Error: ' + err.message;
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.value = 'Submit';
+            }
+        }
+    });
+});
+</script>
+
 </script>
             </div>
         </div>

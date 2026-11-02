@@ -209,10 +209,14 @@ try {
     }
 
     echo json_encode([
+        'validated'     => true,
         'status'        => 'success',
         'message'       => 'Manuscript successfully submitted and logged into cloud database.',
         'manuscript_id' => $refAid,
-        'journal'       => $current_journal['title']
+        'journal'       => $current_journal['title'],
+        'fieldValues'   => [
+            'manuscript_id' => $refAid
+        ]
     ]);
     exit;
 
@@ -222,6 +226,10 @@ try {
     }
     error_log("WWJ Supabase Ingestion Error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['status' => 'error', 'message' => 'Unexpected error while registering manuscript.']);
+    echo json_encode([
+        'validated' => false,
+        'status'    => 'error',
+        'message'   => 'Unexpected error while registering manuscript.'
+    ]);
     exit;
 }
