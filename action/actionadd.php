@@ -79,19 +79,21 @@ if (!in_array($ext, ['doc', 'docx'], true)) {
     exit;
 }
 
-// Rule 3: MIME Type Introspection
-$finfo = new finfo(FILEINFO_MIME_TYPE);
-$mime = $finfo->file($fileTmp);
-$allowed_mimes = [
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/zip',
-    'application/octet-stream'
-];
-if (!in_array($mime, $allowed_mimes, true)) {
-    http_response_code(400);
-    echo json_encode(['status' => 'error', 'message' => 'MIME validation failed. File is not a valid Word document.']);
-    exit;
+// Rule 3: MIME Type Introspection (safe fallback if finfo extension is not installed)
+if (class_exists('finfo')) {
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($fileTmp);
+    $allowed_mimes = [
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/zip',
+        'application/octet-stream'
+    ];
+    if (!in_array($mime, $allowed_mimes, true)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'MIME validation failed. File is not a valid Word document.']);
+        exit;
+    }
 }
 
 // Rule 4: Deep Byte-Level Magic Header Inspection
